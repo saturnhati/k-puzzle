@@ -1,6 +1,6 @@
 import './index.css';
+import svgContent from '../assets/jigsaw.svg?raw';
 
-// K-pop idol images
 const idolImages = [
   '../assets/images/cigarette-taemin.jpeg',
   'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=400&h=400&fit=crop',
@@ -17,16 +17,16 @@ interface PuzzlePiece {
   element: HTMLElement;
 }
 
-interface TabPattern {
-  top: number;
-  right: number;
-  bottom: number;
-  left: number;
+interface Point {
+  x: number;
+  y: number;
 }
 
 class JigsawPuzzle {
-  private gridSize: number = 4;
-  private pieceSize: number = 100;
+  private gridSize: number = 10;
+  private pieceSize: number = 60;
+  private overhang: number = 15;
+  private elementSize: number = 90;
   private pieces: PuzzlePiece[] = [];
   private moves: number = 0;
   private timer: number = 0;
@@ -36,7 +36,9 @@ class JigsawPuzzle {
   private draggedPiece: PuzzlePiece | null = null;
   private dragOffsetX: number = 0;
   private dragOffsetY: number = 0;
-  private tabPatterns: TabPattern[][] = [];
+  private verticalCutLines: string[][] = [];
+  private horizontalCutLines: string[][] = [];
+  private pathsLoaded: boolean = false;
 
   constructor() {
     this.initializeEventListeners();
@@ -46,15 +48,10 @@ class JigsawPuzzle {
   private initializeEventListeners(): void {
     const startBtn = document.getElementById('startBtn') as HTMLButtonElement;
     const shuffleBtn = document.getElementById('shuffleBtn') as HTMLButtonElement;
-    const difficultySelect = document.getElementById('difficulty') as HTMLSelectElement;
     const imageSelect = document.getElementById('imageSelect') as HTMLSelectElement;
 
     startBtn.addEventListener('click', () => this.startGame());
     shuffleBtn.addEventListener('click', () => this.shufflePieces());
-    difficultySelect.addEventListener('change', (e) => {
-      this.gridSize = parseInt((e.target as HTMLSelectElement).value);
-      this.startGame();
-    });
     imageSelect.addEventListener('change', (e) => {
       this.currentImageIndex = parseInt((e.target as HTMLSelectElement).value);
       this.loadPreviewImage();
@@ -74,29 +71,313 @@ class JigsawPuzzle {
     this.updateStats();
     this.stopTimer();
     this.startTimer();
+
+    if (!this.pathsLoaded) {
+      this.loadAndParseSVG();
+    }
+
     this.initializePuzzle();
     this.shufflePieces();
   }
 
+  private loadAndParseSVG(): void {
+    const parser = new DOMParser();
+    const svgDoc = parser.parseFromString(svgContent, 'image/svg+xml');
+    const pathElements = svgDoc.querySelectorAll('path');
+
+    const allCommands: string[][] = [];
+    for (let i = 1; i < pathElements.length; i++) {
+      const d = pathElements[i].getAttribute('d') || '';
+      const raw = this.splitPathIntoCommands(d);
+      const expanded = this.expandSCommands(raw);
+      allCommands.push(expanded);
+    }
+
+    this.verticalCutLines = allCommands.slice(0, 9);
+    this.horizontalCutLines = allCommands.slice(9, 18);
+    this.pathsLoaded = true;
+  }
+
+  private expandSCommands(commands: string[]): string[] {
+    const result: string[] = [];
+    let prevCP: Point | null = null;
+    let current: Point | null = null;
+
+    for (const cmd of commands) {
+      const t = cmd[0];
+      const end = this.getCommandEndPoint(cmd);
+
+      if (t === 'M') {
+        current = end;
+        prevCP = null;
+        result.push(cmd);
+      } else if (t === 'S') {
+        const nums = cmd.slice(1).trim().split(/[\s,]+/).map(Number);
+        const cpx2 = nums[0], cpy2 = nums[1];
+        const cpx1 = prevCP && current ? (2 * current.x - prevCP.x) : (current ? current.x : 0);
+        const cpy1 = prevCP && current ? (2 * current.y - prevCP.y) : (current ? current.y : 0);
+        result.push(`C ${this.formatPoint(cpx1, cpy1)} ${this.formatPoint(cpx2, cpy2)} ${this.formatPoint(end.x, end.y)}`);
+        prevCP = { x: cpx2, y: cpy2 };
+        current = end;
+      } else if (t === 'C') {
+        const nums = cmd.slice(1).trim().split(/[\s,]+/).map(Number);
+        prevCP = { x: nums[nums.length - 4], y: nums[nums.length - 3] };
+        current = end;
+        result.push(cmd);
+      } else {
+        if (t === 'L' || t === 'Q' || t === 'T') {
+          current = end;
+        }
+        result.push(cmd);
+      }
+    }
+
+    return result;
+  }
+
+  private splitPathIntoCommands(d: string): string[] {
+    const commands: string[] = [];
+    const regex = /([MLCSQTAZ])\s*([^MLCSQTAZ]*?)(?=[MLCSQTAZ]|$)/g;
+    let match;
+    while ((match = regex.exec(d)) !== null) {
+      commands.push(match[1] + match[2].trim());
+    }
+    return commands;
+  }
+
+  private getCommandEndPoint(cmd: string): Point {
+    const nums = cmd.slice(1).trim().split(/[\s,]+/).map(Number);
+    return { x: nums[nums.length - 2], y: nums[nums.length - 1] };
+  }
+
+  private formatPoint(x: number, y: number): string {
+    return `${x.toFixed(4)} ${y.toFixed(4)}`;
+  }
+
+  private extractVerticalSegment(commands: string[], row: number): string {
+    const startY = row * this.pieceSize;
+    const endY = (row + 1) * this.pieceSize;
+    const eps = 0.1;
+
+    const segment: string[] = [];
+    let cutX = 0;
+    let collecting = false;
+
+    for (const cmd of commands) {
+      if (cmd[0] === 'M') {
+        cutX = this.getCommandEndPoint(cmd).x;
+        continue;
+      }
+
+      const end = this.getCommandEndPoint(cmd);
+
+      if (!collecting) {
+        if (end.y > startY + eps) {
+          collecting = true;
+          segment.push(`M ${this.formatPoint(cutX, startY)}`);
+          segment.push(cmd);
+        }
+      } else {
+        segment.push(cmd);
+        if (end.y >= endY - eps) {
+          break;
+        }
+      }
+    }
+
+    return segment.join(' ');
+  }
+
+  private extractHorizontalSegment(commands: string[], col: number): string {
+    const startX = col * this.pieceSize;
+    const endX = (col + 1) * this.pieceSize;
+    const eps = 0.1;
+
+    const segment: string[] = [];
+    let cutY = 0;
+    let collecting = false;
+
+    for (const cmd of commands) {
+      if (cmd[0] === 'M') {
+        cutY = this.getCommandEndPoint(cmd).y;
+        continue;
+      }
+
+      const end = this.getCommandEndPoint(cmd);
+
+      if (!collecting) {
+        if (end.x > startX + eps) {
+          collecting = true;
+          segment.push(`M ${this.formatPoint(startX, cutY)}`);
+          segment.push(cmd);
+        }
+      } else {
+        segment.push(cmd);
+        if (end.x >= endX - eps) {
+          break;
+        }
+      }
+    }
+
+    return segment.join(' ');
+  }
+
+  private reversePath(pathStr: string): string {
+    if (!pathStr) return '';
+
+    const commands = this.splitPathIntoCommands(pathStr);
+    if (commands.length < 2) return pathStr;
+
+    const expanded: string[] = [];
+    let prevCP: Point | null = null;
+    let current: Point = { x: 0, y: 0 };
+
+    for (const cmd of commands) {
+      const t = cmd[0];
+      const end = this.getCommandEndPoint(cmd);
+
+      if (t === 'M') {
+        current = end;
+        prevCP = null;
+        expanded.push(cmd);
+      } else if (t === 'S') {
+        const nums = cmd.slice(1).trim().split(/[\s,]+/).map(Number);
+        const cpx2 = nums[0], cpy2 = nums[1];
+        const cpx1 = prevCP ? (2 * current.x - prevCP.x) : current.x;
+        const cpy1 = prevCP ? (2 * current.y - prevCP.y) : current.y;
+        expanded.push(`C ${this.formatPoint(cpx1, cpy1)} ${this.formatPoint(cpx2, cpy2)} ${this.formatPoint(end.x, end.y)}`);
+        prevCP = { x: cpx2, y: cpy2 };
+        current = end;
+      } else {
+        expanded.push(cmd);
+        if (t === 'C') {
+          const nums = cmd.slice(1).trim().split(/[\s,]+/).map(Number);
+          prevCP = { x: nums[nums.length - 4], y: nums[nums.length - 3] };
+        }
+        current = end;
+      }
+    }
+
+    if (expanded.length < 2) return pathStr;
+
+    const reversed: string[] = [];
+    const lastEnd = this.getCommandEndPoint(expanded[expanded.length - 1]);
+    reversed.push(`M ${this.formatPoint(lastEnd.x, lastEnd.y)}`);
+
+    for (let i = expanded.length - 1; i >= 1; i--) {
+      const cmd = expanded[i];
+      if (cmd[0] === 'C') {
+        const nums = cmd.slice(1).trim().split(/[\s,]+/).map(Number);
+        const x1 = nums[0], y1 = nums[1], x2 = nums[2], y2 = nums[3], x = nums[4], y = nums[5];
+
+        let prevEnd: Point;
+        if (i > 1) {
+          prevEnd = this.getCommandEndPoint(expanded[i - 1]);
+        } else {
+          prevEnd = this.getCommandEndPoint(expanded[0]);
+        }
+        reversed.push(`C ${this.formatPoint(x2, y2)} ${this.formatPoint(x1, y1)} ${this.formatPoint(prevEnd.x, prevEnd.y)}`);
+      }
+    }
+
+    return reversed.join(' ');
+  }
+
+  private stripM(path: string): string {
+    return path.replace(/^M\s+-?[\d.]+(?:\s+|\s*,\s*)-?[\d.]+/, '').trim();
+  }
+
+  private generatePieceClipPaths(): void {
+    const S = this.pieceSize;
+    const grid = this.gridSize;
+    const container = document.getElementById('masks-container') as HTMLElement;
+    container.innerHTML = '';
+
+    for (let row = 0; row < grid; row++) {
+      for (let col = 0; col < grid; col++) {
+        const parts: string[] = [];
+
+        if (row === 0) {
+          parts.push(`M ${this.formatPoint(col * S, row * S)} L ${this.formatPoint((col + 1) * S, row * S)}`);
+        } else {
+          const cutCommands = this.horizontalCutLines[row - 1];
+          if (cutCommands) {
+            const seg = this.extractHorizontalSegment(cutCommands, col);
+            parts.push(seg);
+          }
+        }
+
+        if (col === grid - 1) {
+          parts.push(`L ${this.formatPoint((col + 1) * S, (row + 1) * S)}`);
+        } else {
+          const cutCommands = this.verticalCutLines[col];
+          if (cutCommands) {
+            const seg = this.extractVerticalSegment(cutCommands, row);
+            parts.push(this.stripM(seg));
+          }
+        }
+
+        if (row === grid - 1) {
+          parts.push(`L ${this.formatPoint(col * S, (row + 1) * S)}`);
+        } else {
+          const cutCommands = this.horizontalCutLines[row];
+          if (cutCommands) {
+            const seg = this.extractHorizontalSegment(cutCommands, col);
+            const reversed = this.reversePath(seg);
+            parts.push(this.stripM(reversed));
+          }
+        }
+
+        if (col === 0) {
+          parts.push(`L ${this.formatPoint(col * S, row * S)}`);
+        } else {
+          const cutCommands = this.verticalCutLines[col - 1];
+          if (cutCommands) {
+            const seg = this.extractVerticalSegment(cutCommands, row);
+            const reversed = this.reversePath(seg);
+            parts.push(this.stripM(reversed));
+          }
+        }
+
+        const fullPath = parts.join(' ') + ' Z';
+        const normalized = this.normalizePath(fullPath, col * S, row * S, this.elementSize, this.overhang);
+
+        const clipPath = document.createElementNS('http://www.w3.org/2000/svg', 'clipPath');
+        clipPath.setAttribute('id', `clip-${row}-${col}`);
+        clipPath.setAttribute('clipPathUnits', 'objectBoundingBox');
+
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', normalized);
+        clipPath.appendChild(path);
+        container.appendChild(clipPath);
+      }
+    }
+  }
+
+  private normalizePath(pathData: string, originX: number, originY: number, elementSize: number, overhang: number): string {
+    return pathData.replace(/([MLCSQTA])\s*((?:[\d.-]+[\s,]+)*[\d.-]+)/g, (_, cmd, rest) => {
+      const nums = rest.trim().split(/[\s,]+/).map(Number);
+      const transformed: number[] = [];
+      for (let i = 0; i < nums.length; i += 2) {
+        transformed.push((nums[i] - originX + overhang) / elementSize);
+        transformed.push((nums[i + 1] - originY + overhang) / elementSize);
+      }
+      return cmd + ' ' + transformed.map(n => n.toFixed(6)).join(' ');
+    }).replace(/Z/g, 'Z');
+  }
+
   private initializePuzzle(): void {
     const workspace = document.getElementById('workspace') as HTMLElement;
-    
     workspace.innerHTML = '';
 
-    // Generate consistent tab patterns
-    this.generateTabPatterns();
+    this.generatePieceClipPaths();
 
-    // Generate SVG masks
-    this.generateMasks();
-
-    // Calculate workspace center for puzzle placement
     const totalSize = this.pieceSize * this.gridSize;
     const offsetX = (800 - totalSize) / 2;
     const offsetY = (600 - totalSize) / 2;
 
     this.pieces = [];
 
-    // Create puzzle pieces
     for (let row = 0; row < this.gridSize; row++) {
       for (let col = 0; col < this.gridSize; col++) {
         const pieceId = row * this.gridSize + col;
@@ -107,121 +388,28 @@ class JigsawPuzzle {
     }
   }
 
-  private generateTabPatterns(): void {
-    this.tabPatterns = [];
-    
-    for (let row = 0; row < this.gridSize; row++) {
-      this.tabPatterns[row] = [];
-      for (let col = 0; col < this.gridSize; col++) {
-        const pattern: TabPattern = {
-          top: row === 0 ? 0 : (this.tabPatterns[row - 1][col].bottom * -1),
-          left: col === 0 ? 0 : (this.tabPatterns[row][col - 1].right * -1),
-          right: col === this.gridSize - 1 ? 0 : (Math.random() > 0.5 ? 1 : -1),
-          bottom: row === this.gridSize - 1 ? 0 : (Math.random() > 0.5 ? 1 : -1)
-        };
-        this.tabPatterns[row][col] = pattern;
-      }
-    }
-  }
-
-  private generateMasks(): void {
-    const masksContainer = document.getElementById('masks-container') as HTMLElement;
-    masksContainer.innerHTML = '';
-
-    for (let row = 0; row < this.gridSize; row++) {
-      for (let col = 0; col < this.gridSize; col++) {
-        const mask = this.createMask(row, col);
-        masksContainer.appendChild(mask);
-      }
-    }
-  }
-
-  private createMask(row: number, col: number): SVGElement {
-    const mask = document.createElementNS('http://www.w3.org/2000/svg', 'mask');
-    mask.setAttribute('id', `mask-${row}-${col}`);
-    mask.setAttribute('maskContentUnits', 'objectBoundingBox');
-
-    const pattern = this.tabPatterns[row][col];
-
-    // Base rectangle (white = visible) - slightly larger for better fit
-    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-    rect.setAttribute('x', '0.1');
-    rect.setAttribute('y', '0.1');
-    rect.setAttribute('width', '0.8');
-    rect.setAttribute('height', '0.8');
-    rect.setAttribute('fill', 'white');
-    mask.appendChild(rect);
-
-    // Add circles for tabs (black = hidden, white = visible)
-    // Top tab
-    if (pattern.top !== 0) {
-      const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-      circle.setAttribute('cx', '0.5');
-      circle.setAttribute('cy', '0.125');
-      circle.setAttribute('r', '0.125');
-      circle.setAttribute('fill', pattern.top === 1 ? 'white' : 'black');
-      mask.appendChild(circle);
-    }
-
-    // Right tab
-    if (pattern.right !== 0) {
-      const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-      circle.setAttribute('cx', '0.875');
-      circle.setAttribute('cy', '0.5');
-      circle.setAttribute('r', '0.125');
-      circle.setAttribute('fill', pattern.right === 1 ? 'white' : 'black');
-      mask.appendChild(circle);
-    }
-
-    // Bottom tab
-    if (pattern.bottom !== 0) {
-      const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-      circle.setAttribute('cx', '0.5');
-      circle.setAttribute('cy', '0.875');
-      circle.setAttribute('r', '0.125');
-      circle.setAttribute('fill', pattern.bottom === 1 ? 'white' : 'black');
-      mask.appendChild(circle);
-    }
-
-    // Left tab
-    if (pattern.left !== 0) {
-      const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-      circle.setAttribute('cx', '0.125');
-      circle.setAttribute('cy', '0.5');
-      circle.setAttribute('r', '0.125');
-      circle.setAttribute('fill', pattern.left === 1 ? 'white' : 'black');
-      mask.appendChild(circle);
-    }
-
-    return mask;
-  }
-
   private createPiece(id: number, row: number, col: number, offsetX: number, offsetY: number): PuzzlePiece {
     const element = document.createElement('div');
     element.className = 'puzzle-piece';
-    element.style.width = `${this.pieceSize}px`;
-    element.style.height = `${this.pieceSize}px`;
+    element.style.width = `${this.elementSize}px`;
+    element.style.height = `${this.elementSize}px`;
     element.dataset.id = id.toString();
 
-    // Use background image with mask
-    const totalSize = this.pieceSize * this.gridSize;
-    const backgroundPositionX = -(col * this.pieceSize);
-    const backgroundPositionY = -(row * this.pieceSize);
+    const bgX = -(col * this.pieceSize) + this.overhang;
+    const bgY = -(row * this.pieceSize) + this.overhang;
 
     element.style.backgroundImage = `url(${idolImages[this.currentImageIndex]})`;
-    element.style.backgroundPosition = `${backgroundPositionX}px ${backgroundPositionY}px`;
-    element.style.backgroundSize = `${totalSize}px ${totalSize}px`;
-    
-    // Apply SVG mask
-    element.style.maskImage = `url(#mask-${row}-${col})`;
-    element.style.webkitMaskImage = `url(#mask-${row}-${col})`;
+    element.style.backgroundPosition = `${bgX}px ${bgY}px`;
+    element.style.backgroundSize = `${this.pieceSize * this.gridSize}px ${this.pieceSize * this.gridSize}px`;
 
-    // Add drag events
+    element.style.clipPath = `url(#clip-${row}-${col})`;
+    element.style.webkitClipPath = `url(#clip-${row}-${col})`;
+
     element.addEventListener('mousedown', (e) => this.handleDragStart(e, id));
     element.addEventListener('touchstart', (e) => this.handleDragStart(e, id), { passive: false });
 
-    const correctX = offsetX + col * this.pieceSize;
-    const correctY = offsetY + row * this.pieceSize;
+    const correctX = offsetX + col * this.pieceSize - this.overhang;
+    const correctY = offsetY + row * this.pieceSize - this.overhang;
 
     return {
       id,
@@ -292,24 +480,22 @@ class JigsawPuzzle {
     const piece = this.draggedPiece;
     piece.element.style.zIndex = '';
 
-    // Check if piece is near its correct position
     const targetX = piece.correctX;
     const targetY = piece.correctY;
 
     const distance = Math.sqrt(
-      Math.pow(piece.currentX - targetX, 2) + 
+      Math.pow(piece.currentX - targetX, 2) +
       Math.pow(piece.currentY - targetY, 2)
     );
 
     if (distance < 30) {
-      // Snap to correct position
       piece.currentX = targetX;
       piece.currentY = targetY;
       piece.isSnapped = true;
       piece.element.classList.add('snapped');
       piece.element.style.left = `${targetX}px`;
       piece.element.style.top = `${targetY}px`;
-      
+
       this.moves++;
       this.updateStats();
 
@@ -327,14 +513,14 @@ class JigsawPuzzle {
 
     this.pieces.forEach(piece => {
       if (!piece.isSnapped) {
-        const maxX = workspaceRect.width - this.pieceSize;
-        const maxY = workspaceRect.height - this.pieceSize;
-        
+        const maxX = workspaceRect.width - this.elementSize;
+        const maxY = workspaceRect.height - this.elementSize;
+
         piece.currentX = Math.random() * maxX;
         piece.currentY = Math.random() * maxY;
         piece.element.style.left = `${piece.currentX}px`;
         piece.element.style.top = `${piece.currentY}px`;
-        
+
         workspace.appendChild(piece.element);
       }
     });
@@ -351,7 +537,7 @@ class JigsawPuzzle {
     this.isGameStarted = false;
     this.stopTimer();
     setTimeout(() => {
-      alert(`🎉 Congratulations! You solved the puzzle in ${this.moves} moves and ${this.formatTime(this.timer)}!`);
+      alert(`Congratulations! You solved the puzzle in ${this.moves} moves and ${this.formatTime(this.timer)}!`);
     }, 300);
   }
 
@@ -383,7 +569,6 @@ class JigsawPuzzle {
   }
 }
 
-// Initialize the game when the DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
   new JigsawPuzzle();
 });
