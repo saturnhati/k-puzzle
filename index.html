@@ -1,0 +1,39 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>K-Pop Puzzle Game</title>
+  </head>
+  <body>
+    <div class="container">
+      <h1>💖 K-Pop Puzzle Game</h1>
+      <div class="game-controls">
+        <select id="difficulty">
+          <option value="3">Easy (3x3)</option>
+          <option value="4" selected>Medium (4x4)</option>
+          <option value="5">Hard (5x5)</option>
+        </select>
+        <select id="imageSelect">
+          <option value="0">Idol 1</option>
+          <option value="1">Idol 2</option>
+          <option value="2">Idol 3</option>
+        </select>
+        <button id="startBtn">Start Game</button>
+        <button id="shuffleBtn">Shuffle</button>
+      </div>
+      <div class="stats">
+        <span>Moves: <span id="moves">0</span></span>
+        <span>Time: <span id="timer">00:00</span></span>
+      </div>
+      <div id="workspace" class="workspace"></div>
+      <svg style="position: absolute; width: 0; height: 0;">
+        <defs id="masks-container"></defs>
+      </svg>
+      <div id="previewContainer" class="preview-container">
+        <h3>Preview</h3>
+        <img id="previewImage" src="" alt="Preview" />
+      </div>
+    </div>
+    <script type="module" src="/src/renderer.ts"></script>
+  </body>
+</html>
