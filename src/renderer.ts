@@ -191,6 +191,25 @@ class JigsawPuzzle {
     const previewImg = document.getElementById('previewImage') as HTMLImageElement;
     previewImg.classList.add('hidden');
     previewImg.src = this.currentImage;
+    this.adjustWorkspaceScale();
+    window.addEventListener('resize', this.adjustWorkspaceScale);
+  }
+
+  private adjustWorkspaceScale = (): void => {
+    const wrapper = document.getElementById('workspaceWrapper') as HTMLElement;
+    const workspace = document.getElementById('workspace') as HTMLElement;
+    const wrapperW = wrapper.clientWidth;
+    if (wrapperW < 600) {
+      workspace.style.transform = `scale(${wrapperW / 600})`;
+    } else {
+      workspace.style.transform = '';
+    }
+  };
+
+  private getScale(): number {
+    const workspace = document.getElementById('workspace') as HTMLElement;
+    const wsRect = workspace.getBoundingClientRect();
+    return workspace.offsetWidth / wsRect.width;
   }
 
   private toggleReveal(): void {
@@ -236,6 +255,7 @@ class JigsawPuzzle {
     workspace.innerHTML = '';
     document.getElementById('gameScreen')?.classList.add('hidden');
     document.getElementById('homeScreen')?.classList.remove('hidden');
+    window.removeEventListener('resize', this.adjustWorkspaceScale);
   }
 
   private startGame(): void {
@@ -646,10 +666,11 @@ class JigsawPuzzle {
     const clientY = e instanceof MouseEvent ? e.clientY : e.touches[0].clientY;
 
     const workspace = document.getElementById('workspace') as HTMLElement;
-    const workspaceRect = workspace.getBoundingClientRect();
+    const wsRect = workspace.getBoundingClientRect();
+    const scale = this.getScale();
 
-    const newX = clientX - workspaceRect.left - this.dragOffsetX;
-    const newY = clientY - workspaceRect.top - this.dragOffsetY;
+    const newX = (clientX - wsRect.left - this.dragOffsetX) * scale;
+    const newY = (clientY - wsRect.top - this.dragOffsetY) * scale;
 
     this.draggedPiece.currentX = newX;
     this.draggedPiece.currentY = newY;

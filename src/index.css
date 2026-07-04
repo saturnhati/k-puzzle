@@ -219,15 +219,25 @@ h1 {
   gap: 2rem;
 }
 
+.workspace-wrapper {
+  width: min(600px, calc(100vw - 2rem));
+  aspect-ratio: 1;
+  position: relative;
+  overflow: visible;
+  flex-shrink: 0;
+}
+
 .workspace {
+  position: absolute;
+  top: 0;
+  left: 0;
   width: 600px;
   height: 600px;
   background: var(--workspace-bg);
   border: 3px dashed var(--workspace-border);
   border-radius: 12px;
-  position: relative;
   overflow: visible;
-  flex-shrink: 0;
+  transform-origin: top left;
 }
 
 .sidebar {
