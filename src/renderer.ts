@@ -1,5 +1,4 @@
 import './index.css';
-import svgContent from '../assets/jigsaw.svg?raw';
 
 interface Idol {
   name: string;
@@ -59,6 +58,17 @@ function randomItem<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
+const svgModules = import.meta.glob('../assets/cuts/*.svg', {
+  eager: true,
+  query: '?raw',
+  import: 'default'
+}) as Record<string, string>;
+
+const availableGridSizes = Object.keys(svgModules)
+  .map(p => parseInt(p.match(/(\d+)\.svg$/)?.[1] || ''))
+  .filter(n => !isNaN(n))
+  .sort((a, b) => a - b);
+
 function buildCovers(): Map<string, string> {
   const modules = import.meta.glob('../assets/images/*/cover.{jpg,jpeg,png}', {
     eager: true,
@@ -76,10 +86,12 @@ function buildCovers(): Map<string, string> {
 
 class JigsawPuzzle {
   private gridSize: number = 10;
-  private pieceSize: number = 60;
-  private overhang: number = 15;
-  private elementSize: number = 90;
+  private get pieceSize(): number { return 600 / this.gridSize; }
+  private get overhang(): number { return Math.round(this.pieceSize * 0.25); }
+  private get elementSize(): number { return this.pieceSize + 2 * this.overhang; }
+  private get totalPieces(): number { return this.gridSize * this.gridSize; }
   private pieces: PuzzlePiece[] = [];
+  private placed: number = 0;
   private placed: number = 0;
   private timer: number = 0;
   private timerInterval: number | null = null;
@@ -97,9 +109,28 @@ class JigsawPuzzle {
     this.initializeEventListeners();
   }
 
+  private renderSizePicker(): void {
+    const picker = document.getElementById('sizePicker') as HTMLElement;
+    picker.innerHTML = '';
+    availableGridSizes.forEach(n => {
+      const btn = document.createElement('button');
+      btn.className = 'size-btn' + (n === this.gridSize ? ' active' : '');
+      btn.textContent = `${n}×${n}`;
+      btn.title = `${n * n} pieces`;
+      btn.addEventListener('click', () => {
+        this.gridSize = n;
+        this.pathsLoaded = false;
+        picker.querySelectorAll('.size-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+      });
+      picker.appendChild(btn);
+    });
+  }
+
   private renderHomeScreen(): void {
     const grid = document.getElementById('puzzleGrid') as HTMLElement;
     grid.innerHTML = '';
+    this.renderSizePicker();
 
     const randomCard = document.createElement('div');
     randomCard.className = 'puzzle-card random-card';
@@ -293,20 +324,25 @@ class JigsawPuzzle {
   }
 
   private loadAndParseSVG(): void {
+    const key = `../assets/cuts/${this.gridSize}.svg`;
+    const raw = svgModules[key];
+    if (!raw) return;
+
     const parser = new DOMParser();
-    const svgDoc = parser.parseFromString(svgContent, 'image/svg+xml');
+    const svgDoc = parser.parseFromString(raw, 'image/svg+xml');
     const pathElements = svgDoc.querySelectorAll('path');
 
     const allCommands: string[][] = [];
     for (let i = 1; i < pathElements.length; i++) {
       const d = pathElements[i].getAttribute('d') || '';
-      const raw = this.splitPathIntoCommands(d);
-      const expanded = this.expandSCommands(raw);
+      const rawCmd = this.splitPathIntoCommands(d);
+      const expanded = this.expandSCommands(rawCmd);
       allCommands.push(expanded);
     }
 
-    this.verticalCutLines = allCommands.slice(0, 9);
-    this.horizontalCutLines = allCommands.slice(9, 18);
+    const cuts = this.gridSize - 1;
+    this.verticalCutLines = allCommands.slice(0, cuts);
+    this.horizontalCutLines = allCommands.slice(cuts, cuts * 2);
     this.pathsLoaded = true;
   }
 
@@ -751,7 +787,9 @@ class JigsawPuzzle {
   private updateStats(): void {
     const placedElement = document.getElementById('placed') as HTMLElement;
     const timerElement = document.getElementById('timer') as HTMLElement;
+    const totalElement = document.getElementById('total') as HTMLElement;
     placedElement.textContent = this.placed.toString();
+    totalElement.textContent = this.totalPieces.toString();
     timerElement.textContent = this.formatTime(this.timer);
   }
 

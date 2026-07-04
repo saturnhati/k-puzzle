@@ -11,6 +11,7 @@
       <div id="homeScreen">
         <h1>K-PUZZLE</h1>
         <p class="subtitle">SELECT YOUR PUZZLE<span class="cursor">█</span></p>
+        <div class="size-picker" id="sizePicker"></div>
         <div class="puzzle-grid" id="puzzleGrid"></div>
       </div>
 
@@ -22,7 +23,7 @@
           <button id="shuffleBtn">SHUFFLE</button>
         </div>
         <div class="stats">
-          <span>PIECES: <span id="placed">0</span>/100</span>
+          <span>PIECES: <span id="placed">0</span>/<span id="total">100</span></span>
           <span>TIME: <span id="timer">00:00</span></span>
         </div>
         <div class="game-area">
