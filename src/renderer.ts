@@ -206,7 +206,6 @@ class JigsawPuzzle {
       revealBtn.textContent = 'REVEAL';
       revealBtn.classList.remove('revealed');
     }
-    this.repositionUnsnapped();
   }
 
   private repositionUnsnapped(): void {
