@@ -1,11 +1,10 @@
 import './index.css';
 import svgContent from '../assets/jigsaw.svg?raw';
 
-const idolImages = [
-  '../assets/images/cigarette-taemin.jpeg',
-  'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=400&h=400&fit=crop',
-  'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&h=400&fit=crop'
-];
+interface Idol {
+  name: string;
+  images: string[];
+}
 
 interface PuzzlePiece {
   id: number;
@@ -22,16 +21,69 @@ interface Point {
   y: number;
 }
 
+function buildIdols(): Idol[] {
+  const modules = import.meta.glob('../assets/images/*/*.{jpg,jpeg,png}', {
+    eager: true,
+    query: '?url',
+    import: 'default'
+  }) as Record<string, string>;
+
+  const map = new Map<string, string[]>();
+  for (const [path, url] of Object.entries(modules)) {
+    if (path.toLowerCase().includes('cover')) continue;
+    const match = path.match(/images\/([^/]+)\//);
+    if (match) {
+      const name = match[1];
+      if (!map.has(name)) map.set(name, []);
+      map.get(name)!.push(url);
+    }
+  }
+  return Array.from(map.entries())
+    .map(([name, images]) => ({ name, images }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+const idols = buildIdols();
+const covers = buildCovers();
+
+const mysteryCover = (() => {
+  const m = import.meta.glob('../assets/images/cover.{jpg,jpeg,png}', {
+    eager: true,
+    query: '?url',
+    import: 'default'
+  }) as Record<string, string>;
+  return Object.values(m)[0];
+})();
+
+function randomItem<T>(arr: T[]): T {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+function buildCovers(): Map<string, string> {
+  const modules = import.meta.glob('../assets/images/*/cover.{jpg,jpeg,png}', {
+    eager: true,
+    query: '?url',
+    import: 'default'
+  }) as Record<string, string>;
+
+  const map = new Map<string, string>();
+  for (const [path, url] of Object.entries(modules)) {
+    const match = path.match(/images\/([^/]+)\//);
+    if (match) map.set(match[1], url);
+  }
+  return map;
+}
+
 class JigsawPuzzle {
   private gridSize: number = 10;
   private pieceSize: number = 60;
   private overhang: number = 15;
   private elementSize: number = 90;
   private pieces: PuzzlePiece[] = [];
-  private moves: number = 0;
+  private placed: number = 0;
   private timer: number = 0;
   private timerInterval: number | null = null;
-  private currentImageIndex: number = 0;
+  private currentImage: string = '';
   private isGameStarted: boolean = false;
   private draggedPiece: PuzzlePiece | null = null;
   private dragOffsetX: number = 0;
@@ -41,31 +93,154 @@ class JigsawPuzzle {
   private pathsLoaded: boolean = false;
 
   constructor() {
+    this.renderHomeScreen();
     this.initializeEventListeners();
-    this.loadPreviewImage();
+  }
+
+  private renderHomeScreen(): void {
+    const grid = document.getElementById('puzzleGrid') as HTMLElement;
+    grid.innerHTML = '';
+
+    const randomCard = document.createElement('div');
+    randomCard.className = 'puzzle-card random-card';
+    const randomThumb = document.createElement('div');
+    randomThumb.className = 'card-thumb';
+    if (mysteryCover) {
+      const img = document.createElement('img');
+      img.src = mysteryCover;
+      img.alt = 'Random';
+      randomThumb.appendChild(img);
+    } else {
+      randomThumb.innerHTML = '<span class="random-icon">?</span>';
+    }
+    const randomLabel = document.createElement('span');
+    randomLabel.className = 'card-label';
+    randomLabel.textContent = '?? RANDOM ??';
+    randomCard.appendChild(randomThumb);
+    randomCard.appendChild(randomLabel);
+    randomCard.addEventListener('click', () => this.selectRandomIdol());
+    grid.appendChild(randomCard);
+
+    idols.forEach(idol => {
+      const card = document.createElement('div');
+      card.className = 'puzzle-card idol-card';
+      card.dataset.name = idol.name;
+
+      const thumb = document.createElement('div');
+      thumb.className = 'card-thumb idol-thumb';
+
+      const cover = covers.get(idol.name);
+      if (cover) {
+        const img = document.createElement('img');
+        img.src = cover;
+        img.alt = idol.name;
+        thumb.appendChild(img);
+      } else {
+        thumb.textContent = idol.name[0];
+      }
+      thumb.title = `${idol.name} (${idol.images.length} images)`;
+
+      const label = document.createElement('span');
+      label.className = 'card-label';
+      label.textContent = idol.name;
+
+      const count = document.createElement('span');
+      count.className = 'card-count';
+      count.textContent = `${idol.images.length} IMG`;
+
+      card.appendChild(thumb);
+      card.appendChild(label);
+      card.appendChild(count);
+      card.addEventListener('click', () => this.selectIdol(idol));
+
+      grid.appendChild(card);
+    });
   }
 
   private initializeEventListeners(): void {
     const startBtn = document.getElementById('startBtn') as HTMLButtonElement;
     const shuffleBtn = document.getElementById('shuffleBtn') as HTMLButtonElement;
-    const imageSelect = document.getElementById('imageSelect') as HTMLSelectElement;
+    const backBtn = document.getElementById('backBtn') as HTMLButtonElement;
+    const revealBtn = document.getElementById('revealBtn') as HTMLButtonElement;
 
     startBtn.addEventListener('click', () => this.startGame());
     shuffleBtn.addEventListener('click', () => this.shufflePieces());
-    imageSelect.addEventListener('change', (e) => {
-      this.currentImageIndex = parseInt((e.target as HTMLSelectElement).value);
-      this.loadPreviewImage();
-      this.startGame();
+    backBtn.addEventListener('click', () => this.goHome());
+    revealBtn.addEventListener('click', () => this.toggleReveal());
+  }
+
+  private selectIdol(idol: Idol): void {
+    this.currentImage = randomItem(idol.images);
+    this.showGameScreen();
+    this.startGame();
+  }
+
+  private selectRandomIdol(): void {
+    const idol = randomItem(idols);
+    this.currentImage = randomItem(idol.images);
+    this.showGameScreen();
+    this.startGame();
+  }
+
+  private showGameScreen(): void {
+    document.getElementById('homeScreen')?.classList.add('hidden');
+    document.getElementById('gameScreen')?.classList.remove('hidden');
+    const revealBtn = document.getElementById('revealBtn') as HTMLButtonElement;
+    revealBtn.textContent = 'REVEAL';
+    revealBtn.classList.remove('revealed');
+    const previewImg = document.getElementById('previewImage') as HTMLImageElement;
+    previewImg.classList.add('hidden');
+    previewImg.src = this.currentImage;
+  }
+
+  private toggleReveal(): void {
+    const previewImg = document.getElementById('previewImage') as HTMLImageElement;
+    const revealBtn = document.getElementById('revealBtn') as HTMLButtonElement;
+    const isHidden = previewImg.classList.contains('hidden');
+    if (isHidden) {
+      previewImg.classList.remove('hidden');
+      revealBtn.textContent = 'HIDE';
+      revealBtn.classList.add('revealed');
+    } else {
+      previewImg.classList.add('hidden');
+      revealBtn.textContent = 'REVEAL';
+      revealBtn.classList.remove('revealed');
+    }
+    this.repositionUnsnapped();
+  }
+
+  private repositionUnsnapped(): void {
+    const tray = document.getElementById('pieceTray') as HTMLElement;
+
+    this.pieces.forEach(piece => {
+      if (!piece.isSnapped) {
+        const maxX = tray.clientWidth - this.elementSize;
+        const maxY = tray.clientHeight - this.elementSize;
+
+        piece.currentX = Math.random() * Math.max(0, maxX);
+        piece.currentY = Math.random() * Math.max(0, maxY);
+        piece.element.style.left = `${piece.currentX}px`;
+        piece.element.style.top = `${piece.currentY}px`;
+
+        if (piece.element.parentNode !== tray) {
+          tray.appendChild(piece.element);
+        }
+      }
     });
   }
 
-  private loadPreviewImage(): void {
-    const previewImage = document.getElementById('previewImage') as HTMLImageElement;
-    previewImage.src = idolImages[this.currentImageIndex];
+  private goHome(): void {
+    this.isGameStarted = false;
+    this.stopTimer();
+    this.pieces = [];
+    const workspace = document.getElementById('workspace') as HTMLElement;
+    workspace.innerHTML = '';
+    document.getElementById('gameScreen')?.classList.add('hidden');
+    document.getElementById('homeScreen')?.classList.remove('hidden');
   }
 
   private startGame(): void {
-    this.moves = 0;
+    this.placed = 0;
     this.timer = 0;
     this.isGameStarted = true;
     this.updateStats();
@@ -368,27 +543,24 @@ class JigsawPuzzle {
 
   private initializePuzzle(): void {
     const workspace = document.getElementById('workspace') as HTMLElement;
+    const tray = document.getElementById('pieceTray') as HTMLElement;
     workspace.innerHTML = '';
 
     this.generatePieceClipPaths();
-
-    const totalSize = this.pieceSize * this.gridSize;
-    const offsetX = (800 - totalSize) / 2;
-    const offsetY = (600 - totalSize) / 2;
 
     this.pieces = [];
 
     for (let row = 0; row < this.gridSize; row++) {
       for (let col = 0; col < this.gridSize; col++) {
         const pieceId = row * this.gridSize + col;
-        const piece = this.createPiece(pieceId, row, col, offsetX, offsetY);
+        const piece = this.createPiece(pieceId, row, col);
         this.pieces.push(piece);
-        workspace.appendChild(piece.element);
+        tray.appendChild(piece.element);
       }
     }
   }
 
-  private createPiece(id: number, row: number, col: number, offsetX: number, offsetY: number): PuzzlePiece {
+  private createPiece(id: number, row: number, col: number): PuzzlePiece {
     const element = document.createElement('div');
     element.className = 'puzzle-piece';
     element.style.width = `${this.elementSize}px`;
@@ -398,7 +570,7 @@ class JigsawPuzzle {
     const bgX = -(col * this.pieceSize) + this.overhang;
     const bgY = -(row * this.pieceSize) + this.overhang;
 
-    element.style.backgroundImage = `url(${idolImages[this.currentImageIndex]})`;
+    element.style.backgroundImage = `url(${this.currentImage})`;
     element.style.backgroundPosition = `${bgX}px ${bgY}px`;
     element.style.backgroundSize = `${this.pieceSize * this.gridSize}px ${this.pieceSize * this.gridSize}px`;
 
@@ -408,8 +580,8 @@ class JigsawPuzzle {
     element.addEventListener('mousedown', (e) => this.handleDragStart(e, id));
     element.addEventListener('touchstart', (e) => this.handleDragStart(e, id), { passive: false });
 
-    const correctX = offsetX + col * this.pieceSize - this.overhang;
-    const correctY = offsetY + row * this.pieceSize - this.overhang;
+    const correctX = col * this.pieceSize - this.overhang;
+    const correctY = row * this.pieceSize - this.overhang;
 
     return {
       id,
@@ -428,6 +600,18 @@ class JigsawPuzzle {
 
     const piece = this.pieces.find(p => p.id === pieceId);
     if (!piece || piece.isSnapped) return;
+
+    const workspace = document.getElementById('workspace') as HTMLElement;
+
+    if (piece.element.parentNode !== workspace) {
+      const trayRect = piece.element.parentElement!.getBoundingClientRect();
+      const wsRect = workspace.getBoundingClientRect();
+      piece.currentX = trayRect.left - wsRect.left + piece.currentX;
+      piece.currentY = trayRect.top - wsRect.top + piece.currentY;
+      piece.element.style.left = `${piece.currentX}px`;
+      piece.element.style.top = `${piece.currentY}px`;
+      workspace.appendChild(piece.element);
+    }
 
     this.draggedPiece = piece;
 
@@ -496,7 +680,7 @@ class JigsawPuzzle {
       piece.element.style.left = `${targetX}px`;
       piece.element.style.top = `${targetY}px`;
 
-      this.moves++;
+      this.placed++;
       this.updateStats();
 
       if (this.checkWin()) {
@@ -508,24 +692,8 @@ class JigsawPuzzle {
   }
 
   private shufflePieces(): void {
-    const workspace = document.getElementById('workspace') as HTMLElement;
-    const workspaceRect = workspace.getBoundingClientRect();
-
-    this.pieces.forEach(piece => {
-      if (!piece.isSnapped) {
-        const maxX = workspaceRect.width - this.elementSize;
-        const maxY = workspaceRect.height - this.elementSize;
-
-        piece.currentX = Math.random() * maxX;
-        piece.currentY = Math.random() * maxY;
-        piece.element.style.left = `${piece.currentX}px`;
-        piece.element.style.top = `${piece.currentY}px`;
-
-        workspace.appendChild(piece.element);
-      }
-    });
-
-    this.moves = 0;
+    this.repositionUnsnapped();
+    this.placed = this.pieces.filter(p => p.isSnapped).length;
     this.updateStats();
   }
 
@@ -537,7 +705,7 @@ class JigsawPuzzle {
     this.isGameStarted = false;
     this.stopTimer();
     setTimeout(() => {
-      alert(`Congratulations! You solved the puzzle in ${this.moves} moves and ${this.formatTime(this.timer)}!`);
+      alert(`Congratulations! You solved the puzzle in ${this.formatTime(this.timer)}!`);
     }, 300);
   }
 
@@ -556,9 +724,9 @@ class JigsawPuzzle {
   }
 
   private updateStats(): void {
-    const movesElement = document.getElementById('moves') as HTMLElement;
+    const placedElement = document.getElementById('placed') as HTMLElement;
     const timerElement = document.getElementById('timer') as HTMLElement;
-    movesElement.textContent = this.moves.toString();
+    placedElement.textContent = this.placed.toString();
     timerElement.textContent = this.formatTime(this.timer);
   }
 

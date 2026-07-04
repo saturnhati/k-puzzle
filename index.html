@@ -2,31 +2,41 @@
 <html>
   <head>
     <meta charset="UTF-8" />
-    <title>K-Pop Puzzle Game</title>
+    <title>K-Puzzle</title>
   </head>
-  <body>
+  <body class="theme-arcade">
     <div class="container">
-      <h1>💖 K-Pop Puzzle Game</h1>
-      <div class="game-controls">
-        <select id="imageSelect">
-          <option value="0">Idol 1</option>
-          <option value="1">Idol 2</option>
-          <option value="2">Idol 3</option>
-        </select>
-        <button id="startBtn">Start Game</button>
-        <button id="shuffleBtn">Shuffle</button>
+      <div id="homeScreen">
+        <h1>K-PUZZLE</h1>
+        <p class="subtitle">SELECT YOUR PUZZLE<span class="cursor">█</span></p>
+        <div class="puzzle-grid" id="puzzleGrid"></div>
       </div>
-      <div class="stats">
-        <span>Moves: <span id="moves">0</span></span>
-        <span>Time: <span id="timer">00:00</span></span>
-      </div>
-      <div id="workspace" class="workspace"></div>
-      <svg style="position: absolute; width: 0; height: 0;">
-        <defs id="masks-container"></defs>
-      </svg>
-      <div id="previewContainer" class="preview-container">
-        <h3>Preview</h3>
-        <img id="previewImage" src="" alt="Preview" />
+
+      <div id="gameScreen" class="hidden">
+        <h1>K-PUZZLE</h1>
+        <div class="game-controls">
+          <button id="backBtn" class="back-btn">← SELECT</button>
+          <button id="startBtn">START</button>
+          <button id="shuffleBtn">SHUFFLE</button>
+        </div>
+        <div class="stats">
+          <span>PIECES: <span id="placed">0</span>/100</span>
+          <span>TIME: <span id="timer">00:00</span></span>
+        </div>
+        <div class="game-area">
+          <div id="workspace" class="workspace"></div>
+          <div class="sidebar">
+            <div class="preview-container">
+              <h3>PREVIEW</h3>
+              <button id="revealBtn" class="reveal-btn">REVEAL</button>
+              <img id="previewImage" class="hidden" src="" alt="Preview" />
+            </div>
+            <div id="pieceTray" class="piece-tray"></div>
+          </div>
+        </div>
+        <svg style="position: absolute; width: 0; height: 0;">
+          <defs id="masks-container"></defs>
+        </svg>
       </div>
     </div>
     <script type="module" src="/src/renderer.ts"></script>
