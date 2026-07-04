@@ -225,6 +225,7 @@ h1 {
   position: relative;
   overflow: visible;
   flex-shrink: 0;
+  z-index: 1;
 }
 
 .workspace {
@@ -361,6 +362,7 @@ h1 {
 
   .piece-tray {
     width: 100%;
+    order: -1;
   }
 
   .preview-container {

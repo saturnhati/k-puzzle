@@ -228,20 +228,29 @@ class JigsawPuzzle {
   }
 
   private repositionUnsnapped(): void {
+    const workspace = document.getElementById('workspace') as HTMLElement;
     const tray = document.getElementById('pieceTray') as HTMLElement;
+    const wsRect = workspace.getBoundingClientRect();
+    const trRect = tray.getBoundingClientRect();
+    const scale = 600 / wsRect.width;
+
+    const trayLeft = (trRect.left - wsRect.left) * scale;
+    const trayTop = (trRect.top - wsRect.top) * scale;
+    const trayW = trRect.width * scale;
+    const trayH = trRect.height * scale;
 
     this.pieces.forEach(piece => {
       if (!piece.isSnapped) {
-        const maxX = tray.clientWidth - this.elementSize;
-        const maxY = tray.clientHeight - this.elementSize;
+        const maxX = trayW - this.elementSize;
+        const maxY = trayH - this.elementSize;
 
-        piece.currentX = Math.random() * Math.max(0, maxX);
-        piece.currentY = Math.random() * Math.max(0, maxY);
+        piece.currentX = trayLeft + Math.random() * Math.max(0, maxX);
+        piece.currentY = trayTop + Math.random() * Math.max(0, maxY);
         piece.element.style.left = `${piece.currentX}px`;
         piece.element.style.top = `${piece.currentY}px`;
 
-        if (piece.element.parentNode !== tray) {
-          tray.appendChild(piece.element);
+        if (piece.element.parentNode !== workspace) {
+          workspace.appendChild(piece.element);
         }
       }
     });
@@ -562,7 +571,6 @@ class JigsawPuzzle {
 
   private initializePuzzle(): void {
     const workspace = document.getElementById('workspace') as HTMLElement;
-    const tray = document.getElementById('pieceTray') as HTMLElement;
     workspace.innerHTML = '';
 
     this.generatePieceClipPaths();
@@ -574,7 +582,7 @@ class JigsawPuzzle {
         const pieceId = row * this.gridSize + col;
         const piece = this.createPiece(pieceId, row, col);
         this.pieces.push(piece);
-        tray.appendChild(piece.element);
+        workspace.appendChild(piece.element);
       }
     }
   }
@@ -619,18 +627,6 @@ class JigsawPuzzle {
 
     const piece = this.pieces.find(p => p.id === pieceId);
     if (!piece || piece.isSnapped) return;
-
-    const workspace = document.getElementById('workspace') as HTMLElement;
-
-    if (piece.element.parentNode !== workspace) {
-      const trayRect = piece.element.parentElement!.getBoundingClientRect();
-      const wsRect = workspace.getBoundingClientRect();
-      piece.currentX = trayRect.left - wsRect.left + piece.currentX;
-      piece.currentY = trayRect.top - wsRect.top + piece.currentY;
-      piece.element.style.left = `${piece.currentX}px`;
-      piece.element.style.top = `${piece.currentY}px`;
-      workspace.appendChild(piece.element);
-    }
 
     this.draggedPiece = piece;
 
