@@ -162,11 +162,20 @@ class JigsawPuzzle {
     const shuffleBtn = document.getElementById('shuffleBtn') as HTMLButtonElement;
     const backBtn = document.getElementById('backBtn') as HTMLButtonElement;
     const revealBtn = document.getElementById('revealBtn') as HTMLButtonElement;
+    const themeToggle = document.getElementById('themeToggle') as HTMLButtonElement;
 
     startBtn.addEventListener('click', () => this.startGame());
     shuffleBtn.addEventListener('click', () => this.shufflePieces());
     backBtn.addEventListener('click', () => this.goHome());
     revealBtn.addEventListener('click', () => this.toggleReveal());
+    themeToggle.addEventListener('click', () => this.toggleTheme());
+  }
+
+  private toggleTheme(): void {
+    const body = document.body;
+    body.classList.toggle('light');
+    const btn = document.getElementById('themeToggle') as HTMLButtonElement;
+    btn.textContent = body.classList.contains('light') ? '☾' : '☀';
   }
 
   private selectIdol(idol: Idol): void {

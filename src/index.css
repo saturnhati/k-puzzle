@@ -11,6 +11,23 @@
   --select-color: #c77dff;
   --h1-shadow: 0 0 20px rgba(176, 0, 255, 0.5), 0 0 40px rgba(199, 125, 255, 0.3);
   --border-color: #b000ff;
+  --piece-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.light {
+  --bg: linear-gradient(180deg, #e9d5ff 0%, #d8b4fe 100%);
+  --button-bg: #7c3aed;
+  --button-hover: #6d28d9;
+  --button-shadow: rgba(124, 58, 237, 0.4);
+  --text-color: #4a1a6b;
+  --workspace-bg: rgba(255, 255, 255, 0.6);
+  --workspace-border: rgba(124, 58, 237, 0.4);
+  --preview-bg: rgba(255, 255, 255, 0.5);
+  --select-bg: white;
+  --select-color: #4a1a6b;
+  --h1-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
+  --border-color: #7c3aed;
+  --piece-shadow: 2px 2px 6px rgba(0, 0, 0, 0.2);
 }
 
 body {
@@ -277,7 +294,7 @@ h1 {
   position: absolute;
   cursor: grab;
   transition: transform 0.1s ease;
-  filter: drop-shadow(2px 2px 4px rgba(0, 0, 0, 0.3));
+  filter: drop-shadow(var(--piece-shadow));
   z-index: 10;
 }
 
@@ -342,9 +359,29 @@ h1 {
   box-shadow: 0 0 15px rgba(176, 0, 255, 0.3);
 }
 
-.reveal-btn.revealed {
-  background: rgba(176, 0, 255, 0.2);
-  border-color: #d580ff;
+.theme-toggle {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 2px solid var(--border-color);
+  background: var(--preview-bg);
+  color: var(--text-color);
+  font-size: 1.3rem;
+  cursor: pointer;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  backdrop-filter: blur(10px);
+}
+
+.theme-toggle:hover {
+  transform: scale(1.1);
+  box-shadow: 0 0 15px var(--button-shadow);
 }
 
 /* ---- Mobile ---- */
